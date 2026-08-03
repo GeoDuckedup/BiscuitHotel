@@ -15,6 +15,57 @@
   body{font-family:'Archivo',system-ui,sans-serif;color:var(--ink);
     touch-action:none;overscroll-behavior:none;user-select:none}
   #c{display:block;position:absolute;top:0}
+  /* ---- main menu ----
+     The splash region at the top is deliberately empty and oversized: artwork
+     goes there. Everything below it is sized so the buttons stay in the lower
+     half of the screen, in thumb reach, whatever the splash ends up being. */
+  #menu{position:fixed;inset:0;z-index:55;background:#0D0A09;
+    display:flex;flex-direction:column;align-items:center;
+    padding:calc(env(safe-area-inset-top) + 20px) 22px calc(env(safe-area-inset-bottom) + 26px)}
+  #menu.off{display:none}
+  #splash{flex:1 1 auto;min-height:34vh;width:100%;max-width:440px;
+    display:flex;align-items:center;justify-content:center;
+    border-radius:8px;position:relative;overflow:hidden;
+    background:linear-gradient(180deg,#16202E 0%,#25313F 58%,#2E2A24 100%)}
+  /* placeholder skyline — goes with the rest of #splash when the art arrives */
+  #splash::after{content:'';position:absolute;left:0;right:0;bottom:0;height:34%;
+    background:
+      linear-gradient(90deg,transparent 0 6%,#1A222C 6% 14%,transparent 14% 19%,
+        #161D26 19% 29%,transparent 29% 36%,#1E2733 36% 48%,transparent 48% 54%,
+        #161D26 54% 63%,transparent 63% 71%,#1A222C 71% 86%,transparent 86%);
+    opacity:.85}
+  #splash h1{position:relative;z-index:1;margin:0;
+    font-family:'Archivo Black',system-ui,sans-serif;
+    font-size:clamp(34px,12.5vw,58px);line-height:.92;letter-spacing:-.025em;
+    color:var(--paper);text-align:center;text-transform:uppercase;
+    text-shadow:0 3px 0 rgba(0,0,0,.45)}
+  #mBtns{flex:0 0 auto;width:100%;max-width:440px;display:flex;flex-direction:column;
+    gap:11px;margin-top:24px}
+  /* the word fills the button — nothing else lives in here */
+  .mBtn{width:100%;padding:0 12px;height:clamp(58px,9.4vh,76px);border-radius:6px;
+    cursor:pointer;display:flex;align-items:center;justify-content:center;
+    background:var(--panel);border:1px solid var(--line);color:var(--ink);
+    font-family:'Archivo Black',system-ui,sans-serif;
+    font-size:clamp(19px,5.6vw,26px);letter-spacing:-.01em;text-transform:uppercase;
+    line-height:1;white-space:nowrap}
+  .mBtn.go{background:var(--brass);border-color:var(--brass);color:#1A1206}
+  .mBtn:disabled{opacity:.34;cursor:default}
+  .mBtn:active{transform:scale(.99)}
+
+  #howto{position:fixed;inset:0;z-index:57;background:#0D0A09;display:none;
+    flex-direction:column;
+    padding:calc(env(safe-area-inset-top) + 18px) 22px calc(env(safe-area-inset-bottom) + 20px)}
+  #howto.on{display:flex}
+  #howto h2{font-family:'Archivo Black';font-size:20px;margin:0 0 4px;color:var(--paper)}
+  #howto .scroll{overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;
+    flex:1;margin:10px 0}
+  #howto .row{display:flex;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}
+  #howto .row i{font-style:normal;font-size:21px;width:26px;text-align:center;flex:none}
+  #howto .row b{display:block;font-family:'Archivo Black';font-size:13px;color:var(--paper)}
+  #howto .row span{display:block;font-size:12px;line-height:1.5;color:#B9A895;margin-top:3px}
+  #howto .sub{font-family:'Archivo';font-size:9px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--brass);margin:16px 0 2px}
+
   /* ---- portrait only ----
      A browser cannot truly force orientation: screen.orientation.lock() is
      rejected outside fullscreen or an installed PWA. So we ask for it and, when
@@ -384,6 +435,21 @@
   </div>
 </div>
 
+<div id="menu">
+  <!-- SPLASH: replace the whole of #splash with the artwork when it exists.
+       The banner is the only text above the buttons, by design. -->
+  <div id="splash"><h1>Biscuit<br>Hotel</h1></div>
+  <div id="mBtns">
+    <button class="mBtn go" id="mCont">Continue</button>
+    <button class="mBtn" id="mNew">New game</button>
+    <button class="mBtn" id="mHow">How to play</button>
+  </div>
+</div>
+<div id="howto">
+  <h2>How to play</h2>
+  <div class="scroll" id="howBody"></div>
+  <button class="mBtn go" id="howX" style="flex:0 0 auto"><i>&#10003;</i><span>Got it</span></button>
+</div>
 <div id="rotate">
   <div class="ph"></div>
   <b>Turn your phone upright</b>
@@ -5366,9 +5432,71 @@ loadPrefs();
 
 /* --------------------------------- loop --------------------------------- */
 let prev=performance.now(), acc=0; const STEP=1/60;
+
+/* --------------------------------- menu -----------------------------------
+   The sim is held while the menu or the how-to is up, so a returning player
+   does not lose a night to reading. Everything is loaded by this point either
+   way — Continue simply uncovers it.
+   ---------------------------------------------------------------------------- */
+let MENU_ON=true;
+const HOW_ROWS=[
+  ['\uD83D\uDD28','Build','Rooms give guests somewhere to sleep. Shared rooms — a garden, a pool, the bar — are what bring new breeds to the door and let you grant what a dog is wishing for.'],
+  ['\uD83D\uDC3E','Check in','Guests wait in the lobby. Give them a room that suits them and they settle faster. Betsy will do it for you unless you would rather choose.'],
+  ['\u2665','Tend','Tap a dog to sit with them. Scratch them, throw a ball, ask how they are getting on. Do it well and they warm to you.'],
+  ['\u2665','Hearts','Five hearts and a dog moves in for good. They tell you a little more of where they came from with each one.']
+];
+const HOW_MOVE=[
+  ['\u2195','Getting about','Drag to move. Pinch, or use the slider on the right, to zoom. At full zoom, swipe up or down to change floor.'],
+  ['\u2317','The whole hotel','Two fingers tapped together, or the Map button, pulls back to show everything.'],
+  ['\u2699','Settings','The gear moves the zoom slider to your other hand, or turns it off.']
+];
+function hasSave(){ try{ return !!SaveAdapter.read(); }catch(e){ return false; } }
+function renderHow(){
+  const b=document.getElementById('howBody'); b.innerHTML='';
+  const add=(list,label)=>{
+    if(label){ const h=document.createElement('div'); h.className='sub'; h.textContent=label; b.appendChild(h); }
+    for(const [ic,t,d] of list){
+      const r=document.createElement('div'); r.className='row';
+      r.innerHTML='<i>'+ic+'</i><div><b>'+t+'</b><span>'+d+'</span></div>';
+      b.appendChild(r);
+    }
+  };
+  add(HOW_ROWS,'What you do');
+  add(HOW_MOVE,'Moving around');
+}
+function openMenu(){
+  MENU_ON=true;
+  /* No explanatory text on the menu at all — Continue simply greys out when
+     there is nothing to continue, and New game does its warning in the confirm
+     rather than under the button. */
+  const has=hasSave();
+  const c=document.getElementById('mCont'), n=document.getElementById('mNew');
+  c.disabled=!has;
+  c.classList.toggle('go',has);
+  n.classList.toggle('go',!has);
+  document.getElementById('menu').classList.remove('off');
+}
+function closeMenu(){ MENU_ON=false; document.getElementById('menu').classList.add('off'); prev=0; }
+function bindMenu(){
+  document.getElementById('mCont').onclick=()=>{ if(hasSave()) closeMenu(); };
+  document.getElementById('mNew').onclick=()=>{
+    /* Destructive, so it asks — but only when there is something to lose. */
+    if(hasSave()&&!confirm('Start a new hotel? The one you have now will be lost.')) return;
+    if(hasSave()){ resetGame(); return; }
+    closeMenu();
+  };
+  document.getElementById('mHow').onclick=()=>{
+    renderHow(); document.getElementById('howto').classList.add('on'); };
+  document.getElementById('howX').onclick=()=>
+    document.getElementById('howto').classList.remove('on');
+}
+bindMenu(); openMenu();
+
 function frame(now){
   const dt=Math.max(0,Math.min(.05,(now-prev)/1000)); prev=now;
-  acc+=dt; let n=0; while(acc>=STEP&&n<8){ step(STEP); acc-=STEP; n++; }
+  // the hotel waits while the menu is up
+  if(!MENU_ON){ acc+=dt; let n=0; while(acc>=STEP&&n<8){ step(STEP); acc-=STEP; n++; } }
+  else acc=0;
   if(!ptrs.size&&!zDrag&&!FOCUS&&cam.tx===null){
     if(Math.abs(panV)>.0004){
       cam.cx+=panV*dt*60/16;
